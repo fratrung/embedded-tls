@@ -233,6 +233,71 @@ impl<CipherSuite: TlsCipherSuite, RNG: CryptoRngCore> CryptoProvider
     }
 }
 
+
+// Ed25519 Provider 
+use ed25519::Signature as Ed25519RawSignature;
+use signature::{Signer, SignerMut};
+
+use ed25519_dalek::{
+    SigningKey as DalekSigningKey,
+    pkcs8::DecodePrivateKey, 
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Ed25519Sig([u8; 64]);
+
+impl From<Ed25519RawSignature> for Ed25519Sig {
+    fn from(s: Ed25519RawSignature) -> Self {
+        Ed25519Sig(s.to_bytes())
+    }
+}
+
+impl AsRef<[u8]> for Ed25519Sig {
+    fn as_ref(&self) -> &[u8] { &self.0 }
+}
+
+struct DalekSigner(DalekSigningKey);
+
+impl Signer<Ed25519Sig> for DalekSigner {
+    fn try_sign(&self, msg: &[u8]) -> Result<Ed25519Sig, signature::Error> {
+        Ok(Ed25519Sig::from(self.0.sign(msg)))
+    }
+}
+pub struct Ed25519Provider<CipherSuite, RNG> {
+    rng: RNG,
+    _marker: PhantomData<CipherSuite>,
+}
+
+impl<RNG: CryptoRngCore> Ed25519Provider<(), RNG> {
+    pub fn new<CipherSuite: TlsCipherSuite>(rng: RNG) -> Ed25519Provider<CipherSuite, RNG> {
+        Ed25519Provider {
+            rng,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<CipherSuite: TlsCipherSuite, RNG: CryptoRngCore> CryptoProvider
+    for Ed25519Provider<CipherSuite, RNG>
+{
+    type CipherSuite = CipherSuite;
+    type Signature = Ed25519Sig;
+
+    fn rng(&mut self) -> impl CryptoRngCore {
+        &mut self.rng
+    }
+
+    fn signer(
+        &mut self,
+        key_der_or_seed: &[u8],
+    ) -> Result<(impl SignerMut<Self::Signature>, SignatureScheme), TlsError> {
+        let sk = DalekSigningKey::from_pkcs8_der(key_der_or_seed)
+            .map_err(|_| TlsError::InvalidPrivateKey)?;
+
+        Ok((DalekSigner(sk), SignatureScheme::Ed25519))
+    }
+}
+
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TlsContext<'a, Provider>
