@@ -72,6 +72,7 @@ mod record_reader;
 mod write_buffer;
 
 pub use config::UnsecureProvider;
+pub use config::Ed25519Provider;
 pub use extensions::extension_data::signature_algorithms::SignatureScheme;
 pub use handshake::certificate_verify::CertificateVerify;
 pub use rand_core::{CryptoRng, CryptoRngCore};
