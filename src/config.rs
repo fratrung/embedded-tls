@@ -453,7 +453,7 @@ where
             return Err(TlsError::InvalidRecord);
         }
         let sig = DalekSignature::from_bytes(
-            verify.signature.try_into().map_err(|_| TlsError::InvalidSignature)?
+            verify.signature.try_into().map_err(|_| TlsError::InvalidRecord)?
         );
 
         server_vk
