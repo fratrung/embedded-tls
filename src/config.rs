@@ -413,8 +413,7 @@ where
 
         let digest_out = transcript.clone().finalize_fixed();
         let thash_bytes = digest_out.as_slice();
-
-        let mut thash_vec: heapless::Vec<u8, 64> = heapless::Vec::new();
+        let mut thash_vec: Vec<u8, 64> = Vec::new();
         thash_vec.extend_from_slice(thash_bytes)
             .map_err(|_| TlsError::OutOfMemory)?;
         let server_vk = Ed25519Verifier::ed25519_vk_from_cert(leaf_der)
@@ -451,7 +450,7 @@ where
             .map_err(|_| TlsError::EncodeError)?;
 
         if verify.signature.len() != 64 {
-            return Err(TlsError::InvalidSignature);
+            return Err(TlsError::InvalidRecord);
         }
         let sig = DalekSignature::from_bytes(
             verify.signature.try_into().map_err(|_| TlsError::InvalidSignature)?
