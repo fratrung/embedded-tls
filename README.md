@@ -101,6 +101,4 @@ let mut ctx = TlsContext::new(&config, provider);
 
 - This implementation is **experimental** and designed for **resource-constrained devices**.  
 - Relies on [`ed25519-dalek`](https://docs.rs/ed25519-dalek) and the [RustCrypto](https://github.com/RustCrypto) suite for hashing and cryptography.  
-- Tested against a [`rustls`](https://github.com/rustls/rustls)-based TLS 1.3 server with Ed25519 certificates.  
-
 ---
