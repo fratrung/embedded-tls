@@ -1,9 +1,12 @@
-# Embedded-TLS
+# # Ed25519 Support for Embedded-tls
 
 [![CI](https://github.com/drogue-iot/embedded-tls/actions/workflows/ci.yaml/badge.svg)](https://github.com/drogue-iot/embedded-tls/actions/workflows/ci.yaml)
 [![crates.io](https://img.shields.io/crates/v/embedded-tls.svg)](https://crates.io/crates/embedded-tls)
 [![docs.rs](https://docs.rs/embedded-tls/badge.svg)](https://docs.rs/embedded-tls)
 [![Matrix](https://img.shields.io/matrix/drogue-iot:matrix.org)](https://matrix.to/#/#drogue-iot:matrix.org)
+
+This fork extends [`embedded-tls`](https://github.com/embassy-rs/embedded-tls) by adding support for **Ed25519** signatures in TLS 1.3.  
+It introduces a new **`Ed25519Provider`** and a custom **`Ed25519Verifier`** that handle certificate parsing, verification, and signature generation in **`no_std` embedded environments**.
 
 Embedded-TLS is a Rust-native TLS 1.3 implementation that works in a no-std environment. The Rust crate was formerly known as `drogue-tls`. The
 implementation is work in progress, but the [example clients](https://github.com/drogue-iot/embedded-tls/tree/main/examples) should work against the [rustls](https://github.com/ctz/rustls) echo server.
@@ -24,11 +27,6 @@ Only supports writing/receiving one frame at a time, hence using a frame buffer 
 * [Drogue IoT YouTube channel](https://www.youtube.com/channel/UC7GZUy2hKidvY6V_3QZfCcA)
 * [Follow us on Twitter!](https://twitter.com/DrogueIoT)
 
-# Ed25519 Support for embedded-tls
-
-This fork extends [`embedded-tls`](https://github.com/embassy-rs/embedded-tls) by adding support for **Ed25519** signatures in TLS 1.3.  
-It introduces a new **`Ed25519Provider`** and a custom **`Ed25519Verifier`** that handle certificate parsing, verification, and signature generation in **`no_std` embedded environments**.
-
 ---
 
 ## Motivation
@@ -43,7 +41,7 @@ This makes it a natural fit for embedded TLS deployments where efficiency and se
 
 ---
 
-## 🔧 What was added
+## What was added
 
 ### Ed25519 Provider
 Implements the `CryptoProvider` trait to enable client-side signing with Ed25519 private keys:
@@ -63,7 +61,7 @@ Implements the `TlsVerifier` trait to verify server certificates and signatures:
 
 ---
 
-## 📦 Example usage
+## Example usage
 
 ```rust
 use embedded_tls::{TlsConfig, Ed25519Provider, Certificate, TlsContext};
