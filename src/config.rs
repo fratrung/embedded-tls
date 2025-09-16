@@ -399,6 +399,7 @@ where
             }
             None => return Err(TlsError::InvalidCertificate),
         };
+        
         let leaf_der = match cert.entries.first() {
             Some(CertificateEntryRef::X509(der)) => *der,
             _ => return Err(TlsError::InvalidCertificateEntry)
@@ -439,7 +440,10 @@ where
             .transcript_hash
             .as_ref()
             .ok_or(TlsError::InvalidCertificate)?;
-        let mut msg : heapless::Vec<u8, 128> = heapless::Vec::new();
+
+        let mut msg : heapless::Vec<u8, 160> = heapless::Vec::new();
+        msg.extend_from_slice(&[0x20; 64])
+            .map_err(|_| TlsError::EncodeError)?;
         msg.extend_from_slice(b"TLS 1.3, server CertificateVerify")
             .map_err(|_| TlsError::EncodeError)?;
         msg.push(0x00).map_err(|_| TlsError::EncodeError)?;
@@ -456,8 +460,7 @@ where
         server_vk
             .verify(msg.as_slice(), &sig)
             .map_err(|_| TlsError::InvalidSignature)?;
-
-
+        
         Ok(())
     }
 }
