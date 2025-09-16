@@ -1,4 +1,4 @@
-# # Ed25519 Support for Embedded-tls
+# # Ed25519 Support for Embedded-TLS
 
 [![CI](https://github.com/drogue-iot/embedded-tls/actions/workflows/ci.yaml/badge.svg)](https://github.com/drogue-iot/embedded-tls/actions/workflows/ci.yaml)
 [![crates.io](https://img.shields.io/crates/v/embedded-tls.svg)](https://crates.io/crates/embedded-tls)
