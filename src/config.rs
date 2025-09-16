@@ -4,7 +4,7 @@ use crate::TlsError;
 use crate::cipher_suites::CipherSuite;
 use crate::extensions::extension_data::signature_algorithms::SignatureScheme;
 use crate::extensions::extension_data::supported_groups::NamedGroup;
-use crate::handshake::certificate::CertificateRef;
+use crate::handshake::certificate::{CertificateEntryRef, CertificateRef};
 pub use crate::handshake::certificate_verify::CertificateVerifyRef;
 use aes_gcm::{AeadInPlace, Aes128Gcm, Aes256Gcm, KeyInit};
 use digest::core_api::BlockSizeUser;
@@ -265,6 +265,7 @@ impl Signer<Ed25519Sig> for DalekSigner {
 }
 pub struct Ed25519Provider<CipherSuite, RNG> {
     rng: RNG,
+    verifier: Ed25519Verifier,
     _marker: PhantomData<CipherSuite>,
 }
 
@@ -272,6 +273,7 @@ impl<RNG: CryptoRngCore> Ed25519Provider<(), RNG> {
     pub fn new<CipherSuite: TlsCipherSuite>(rng: RNG) -> Ed25519Provider<CipherSuite, RNG> {
         Ed25519Provider {
             rng,
+            verifier: Ed25519Verifier::new(),
             _marker: PhantomData,
         }
     }
@@ -287,6 +289,10 @@ impl<CipherSuite: TlsCipherSuite, RNG: CryptoRngCore> CryptoProvider
         &mut self.rng
     }
 
+    fn verifier(&mut self) -> Result<&mut impl TlsVerifier<Self::CipherSuite>, crate::TlsError> {
+        Ok(&mut self.verifier)
+    }
+
     fn signer(
         &mut self,
         key_der_or_seed: &[u8],
@@ -295,6 +301,164 @@ impl<CipherSuite: TlsCipherSuite, RNG: CryptoRngCore> CryptoProvider
             .map_err(|_| TlsError::InvalidPrivateKey)?;
 
         Ok((DalekSigner(sk), SignatureScheme::Ed25519))
+    }
+}
+// Ed25519 TlsVerifier
+use x509_cert::der::{Decode,Encode};
+use x509_cert::Certificate as X509Cert;
+use ed25519_dalek::{VerifyingKey, Signature as DalekSignature};
+use signature::Verifier;
+
+pub struct Ed25519Verifier{
+    ca_vk: Option<VerifyingKey>,
+    server_vk: Option<VerifyingKey>,
+    transcript_hash: Option<heapless::Vec<u8, 64>>,
+}
+impl Ed25519Verifier {
+
+    pub fn new() -> Self {
+        Self { ca_vk: None, server_vk: None, transcript_hash: None }
+    }
+
+    pub fn ed25519_vk_from_cert(cert_der: &[u8]) -> Result<VerifyingKey, ()> {
+        let cert = X509Cert::from_der(cert_der)
+            .map_err(|_| ())?;
+        let spki = &cert.tbs_certificate.subject_public_key_info;
+        let oid_ed25519 = spki::ObjectIdentifier::new_unwrap("1.3.101.112");
+        if spki.algorithm.oid != oid_ed25519 {
+            return Err(());
+        }
+
+        let pk_bytes = spki
+            .subject_public_key
+            .as_bytes()
+            .ok_or(())?;
+        if pk_bytes.len() != 32 {
+            return Err(());
+        }
+        VerifyingKey::from_bytes(
+            pk_bytes
+            .try_into()
+            .map_err(|_| ())?)
+            .map_err(|_| ()
+        )
+    }
+
+    pub fn tbs_and_signature_from_cert_der(
+        cert_der: &[u8],
+    ) -> Result<(Vec<u8, 1024>, [u8; 64]), ()> {
+        let cert = X509Cert::from_der(cert_der).map_err(|_| ())?;
+
+        let mut tmp = [0u8; 1024];
+        let slice: &[u8] = cert
+            .tbs_certificate
+            .encode_to_slice(&mut tmp) 
+            .map_err(|_| ())?;
+
+        let mut tbs_der: Vec<u8, 1024> = Vec::new();
+        tbs_der.extend_from_slice(slice).map_err(|_| ())?;
+
+        let sig_bytes = cert.signature.as_bytes().ok_or(())?;
+        if sig_bytes.len() != 64 {
+            return Err(());
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(sig_bytes);
+
+        Ok((tbs_der, sig))
+        }
+}
+
+impl<CipherSuite> TlsVerifier<CipherSuite> for Ed25519Verifier
+where
+    CipherSuite: TlsCipherSuite,
+{
+    fn set_hostname_verification(&mut self, _hostname: &str) -> Result<(), crate::TlsError> {
+        Ok(())
+    }
+
+    fn verify_certificate(
+        &mut self,
+        transcript: &CipherSuite::Hash,
+        ca: &Option<Certificate>,
+        cert: CertificateRef,
+    ) -> Result<(), TlsError> {
+
+        let ca_vk: VerifyingKey = match ca {
+            Some(Certificate::X509(der)) => {
+                Ed25519Verifier::ed25519_vk_from_cert(*der).map_err(|_| TlsError::InvalidCertificate)?
+            }
+            Some(Certificate::RawPublicKey(pk)) => {
+                if pk.len() != 32 {
+                    return Err(TlsError::InvalidCertificate);
+                }
+                let arr: [u8; 32] = pk.as_ref()
+                    .try_into()
+                    .map_err(|_| TlsError::InvalidCertificate)?;
+                VerifyingKey::from_bytes(&arr).map_err(|_| TlsError::InvalidCertificate)?
+            }
+            None => return Err(TlsError::InvalidCertificate),
+        };
+        let leaf_der = match cert.entries.first() {
+            Some(CertificateEntryRef::X509(der)) => *der,
+            _ => return Err(TlsError::InvalidCertificateEntry)
+        };
+        let (tbs_der, sig_bytes) = Ed25519Verifier::tbs_and_signature_from_cert_der(leaf_der)
+            .map_err(|_| TlsError::InvalidCertificate)?;
+
+        let sig = DalekSignature::from(&sig_bytes);
+        ca_vk.verify(tbs_der.as_slice(), &sig)
+            .map_err(|_| TlsError::InvalidCertificate)?;
+
+        let digest_out = transcript.clone().finalize_fixed();
+        let thash_bytes = digest_out.as_slice();
+
+        let mut thash_vec: heapless::Vec<u8, 64> = heapless::Vec::new();
+        thash_vec.extend_from_slice(thash_bytes)
+            .map_err(|_| TlsError::OutOfMemory)?;
+        let server_vk = Ed25519Verifier::ed25519_vk_from_cert(leaf_der)
+            .map_err(|_| TlsError::InvalidCertificate)?;
+
+        self.transcript_hash = Some(thash_vec);
+        self.server_vk = Some(server_vk);
+        self.ca_vk = Some(ca_vk);
+
+
+        Ok(())
+    }
+
+    fn verify_signature(&mut self, verify: CertificateVerifyRef) -> Result<(), crate::TlsError> {
+        if verify.signature_scheme != SignatureScheme::Ed25519{
+            return Err(TlsError::InvalidSignatureScheme);
+        }
+        let server_vk = self.
+            server_vk
+            .as_ref()
+            .ok_or(TlsError::InvalidCertificate)?;
+        let thash = self
+            .transcript_hash
+            .as_ref()
+            .ok_or(TlsError::InvalidCertificate)?;
+        let mut msg : heapless::Vec<u8, 128> = heapless::Vec::new();
+        msg.extend_from_slice(b"TLS 1.3, server CertificateVerify")
+            .map_err(|_| TlsError::EncodeError)?;
+        msg.push(0x00).map_err(|_| TlsError::EncodeError)?;
+        msg.extend_from_slice(thash.as_slice())
+            .map_err(|_| TlsError::EncodeError)?;
+
+        if verify.signature.len() != 64 {
+            return Err(TlsError::InvalidSignature);
+        }
+        let sig = DalekSignature::from_bytes(
+            verify.signature.try_into().map_err(|_| TlsError::InvalidSignature)?
+        );
+
+        server_vk
+            .verify(msg.as_slice(), &sig)
+            .map_err(|_| TlsError::InvalidSignature)?;
+
+
+        Ok(())
     }
 }
 
