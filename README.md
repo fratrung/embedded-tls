@@ -5,7 +5,7 @@
 [![docs.rs](https://docs.rs/embedded-tls/badge.svg)](https://docs.rs/embedded-tls)
 [![Matrix](https://img.shields.io/matrix/drogue-iot:matrix.org)](https://matrix.to/#/#drogue-iot:matrix.org)
 
-This fork extends [`embedded-tls`](https://github.com/embassy-rs/embedded-tls) by adding support for **Ed25519** signatures in TLS 1.3.  
+This fork extends [`embedded-tls`](https://github.com/drogue-iot/embedded-tls) by adding support for **Ed25519** signatures in TLS 1.3.  
 It introduces a new **`Ed25519Provider`** and a custom **`Ed25519Verifier`** that handle certificate parsing, verification, and signature generation in **`no_std` embedded environments**.
 
 Embedded-TLS is a Rust-native TLS 1.3 implementation that works in a no-std environment. The Rust crate was formerly known as `drogue-tls`. The
