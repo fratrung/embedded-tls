@@ -458,7 +458,7 @@ where
 
         server_vk
             .verify(msg.as_slice(), &sig)
-            .map_err(|_| TlsError::InvalidSignature)?;
+            .map_err(|_| TlsError::EncodeError)?;
         
         Ok(())
     }
