@@ -98,6 +98,21 @@ let mut ctx = TlsContext::new(&config, provider);
 
 ---
 
+## ⚠️ Limitations
+
+This fork adds Ed25519 support, but it also inherits the general limitations of `embedded-tls` and introduces some specific constraints:
+
+- **TLS 1.3 only** – no support for TLS 1.2 or earlier versions.  
+- **Certificate chain** – currently only validates a single CA certificate against the server leaf. Full certificate chain verification (intermediate CAs, CRLs, OCSP) is **not implemented**.  
+- **Ed25519 only** – no support for other signature algorithms (RSA, ECDSA, etc.).  
+- **Transcript hash** – fixed to SHA-256 through the chosen cipher suite (`Aes128GcmSha256`). Other hash algorithms (e.g. SHA-384) are not supported.  
+- **Single-frame processing** – only one TLS frame can be written or received at a time; large frames >16KB are not guaranteed to work.  
+- **Heapless buffers** – buffer sizes for certificate parsing and transcript storage are statically limited (`heapless::Vec`). Very large certificates or unusual encodings may fail.  
+- **Experimental** – this fork is tested against controlled environments (e.g. Rustls server with Ed25519 certs). Interoperability with a wide range of TLS servers has not been validated.  
+- **Resource usage** – Ed25519 verification (`ed25519-dalek`) can be relatively heavy on small MCUs (RAM/stack/time). Benchmarks on your target hardware are recommended.  
+
+---
+
 ## ⚠️ Notes
 
 - This implementation is **experimental** and designed for **resource-constrained devices**.  
