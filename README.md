@@ -117,8 +117,4 @@ This fork adds Ed25519 support, but it also inherits the general limitations of 
 
 - This implementation is **experimental** and designed for **resource-constrained devices**.  
 - Relies on [`ed25519-dalek`](https://docs.rs/ed25519-dalek) and the [RustCrypto](https://github.com/RustCrypto) suite for hashing and cryptography.  
-<<<<<<< HEAD
-=======
 
->>>>>>> 576e8c2a0f206f8c33f656ea6e5ab89bcdd3fe63
----
