@@ -32,11 +32,11 @@ Only supports writing/receiving one frame at a time, hence using a frame buffer 
 
 ## Motivation
 
-Ed25519 is a modern elliptic-curve signature scheme widely adopted for IoT, embedded, and constrained devices thanks to its:
+Ed25519 is widely used in IoT and constrained devices because of its:
 
 - Small key size (32-byte public keys, 64-byte signatures) 
 - High performance and low memory footprint 
-- Strong security properties 
+- Strong security guarantees   
 
 This makes it a natural fit for embedded TLS deployments where efficiency and security are critical.
 
@@ -48,26 +48,88 @@ This makes it a natural fit for embedded TLS deployments where efficiency and se
 Implements the `CryptoProvider` trait to enable client-side signing with Ed25519 private keys:
 
 - Loads keys from **PKCS#8 DER** format
-- Provides a `DalekSigner` wrapper around [`ed25519-dalek`](https://docs.rs/ed25519-dalek) 
-- Exposes `SignatureScheme::Ed25519` to the TLS handshake 
-- Built on top of the [**RustCrypto**](https://github.com/RustCrypto) ecosystem, ensuring a portable and **`no_std`-compatible** implementation 
+- Wraps [`ed25519-dalek`](https://docs.rs/ed25519-dalek) with a safe API (`DalekSigner`)
+- Fully **`no_std` compatible** thanks to the [RustCrypto](https://github.com/RustCrypto) ecosystem
 
 ### Ed25519 Verifier
-Implements the `TlsVerifier` trait to verify server certificates and signatures:
+The verification logic is fully encapsulated inside the `Ed25519Provider`.  
+Internally, the provider embeds an `Ed25519Verifier` which implements the `TlsVerifier` trait, so the user never has to instantiate or interact with it directly.  
 
-- Parses X.509 Ed25519 certificates (`1.3.101.112` OID) 
-- Validates the certificate chain against a CA 
-- Computes and stores the TLS transcript hash 
-- Verifies the `CertificateVerify` handshake message according to [RFC 8446](https://www.rfc-editor.org/rfc/rfc8446) (TLS 1.3) 
+This integration allows `Ed25519Provider` to transparently handle:
+
+- Parsing of X.509 Ed25519 certificates (`1.3.101.112` OID)  
+- Validation of the server certificate against the trusted CA  
+- Transcript hash computation and storage  
+- Verification of the `CertificateVerify` handshake message (RFC 8446, TLS 1.3)  
+
+In practice, configuring the `Ed25519Provider` is enough. Certificate parsing and signature verification are performed automatically during the TLS handshake.
 
 ---
 
-## Example usage
+## Example usage (ESP32-C3)
 
 ```rust
+
+use esp_hal::rng::Rng;
+use rand_core::{RngCore, CryptoRng};
+
 use embedded_tls::{TlsConfig, Ed25519Provider, Certificate, TlsContext};
-use rand_core::OsRng;
 use embedded_tls::cipher_suites::Aes128GcmSha256;
+
+
+
+// -----------------------------------------------------------------------------
+// Esp32-C3 RNG Wrapper
+// -----------------------------------------------------------------------------
+// embedded-tls is designed for `no_std` environments and requires an RNG that
+// implements the `RngCore` and `CryptoRng` traits.
+// The ESP32 hardware RNG (`esp-hal::rng::Rng`) does not directly implement them,
+// therefore a wrapper is created to provide the required traits.
+// -----------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct Esp32c3RngWrapper(Rng);
+
+impl From<Rng> for Esp32c3RngWrapper {
+    fn from(rng: Rng) -> Self {
+        Self(rng)
+    }
+}
+
+impl RngCore for Esp32c3RngWrapper {
+    fn next_u32(&mut self) -> u32 {
+        self.0.random()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        ((self.next_u32() as u64) << 32) | (self.next_u32() as u64)
+    }
+
+    fn fill_bytes(&mut self, dst: &mut [u8]) {
+        for chunk in dst.chunks_mut(4) {
+            let bytes = self.next_u32().to_le_bytes();
+            let (head, _) = bytes.split_at(chunk.len());
+            chunk.copy_from_slice(head);
+        }
+    }
+
+    fn try_fill_bytes(
+        &mut self,
+        dest: &mut [u8],
+    ) -> Result<(), rand_core::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
+
+impl CryptoRng for Esp32c3RngWrapper {}
+
+// ESP32 peripherals and the hardware RNG are initialized.
+let peripherals = esp_hal::init(
+        esp_hal::Config::default().with_cpu_clock(CpuClock::max()),
+    );
+let rng = Rng::new(peripherals.RNG);
+let mut hal_rng = Esp32c3RngWrapper::from(rng);
 
 // Load certificates and keys (DER format)
 let ca_cert: &[u8] = include_bytes!("ca.der");
@@ -81,7 +143,7 @@ let config = TlsConfig::new()
     .with_priv_key(client_key);
 
 // Use Ed25519 provider with AES128-GCM-SHA256
-let provider = Ed25519Provider::new::<Aes128GcmSha256>(OsRng);
+let provider = Ed25519Provider::new::<Aes128GcmSha256>(&mut hal_rng);
 
 // Create TLS context
 let mut ctx = TlsContext::new(&config, provider);
@@ -95,6 +157,18 @@ let mut ctx = TlsContext::new(&config, provider);
 - [x] CertificateVerify message verification 
 - [x] Client authentication with Ed25519 private keys 
 - [x] Fully `no_std` compatible thanks to **RustCrypto crates** 
+
+---
+
+## 🧪 Validation and Testing
+
+The implementation has been validated on real hardware using an **ESP32-C3** target.  
+Dedicated firmware and client code are available in a separate branch of this repository, each with its own README that explains how the client was built, integrated, and tested:
+
+- [ESP32-C3 Firmware (README)](https://github.com/wasmbed/wasmbed/blob/valeriot30%2Bfratrung/firmware-esp32c3/crates/wasmbed-firmware-esp32c3/README.md)  
+- [ESP32-C3 TLS Client (README)](https://github.com/wasmbed/wasmbed/blob/valeriot30%2Bfratrung/firmware-esp32c3/crates/wasmbed-protocol-client/README.md)  
+
+These resources complement the library by providing a concrete usage scenario, including compilation, flashing, and runtime testing of the TLS client with **Ed25519 support**.
 
 ---
 
