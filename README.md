@@ -163,10 +163,10 @@ let mut ctx = TlsContext::new(&config, provider);
 ## 🧪 Validation and Testing
 
 The implementation has been validated on real hardware using an **ESP32-C3** target.  
-Dedicated firmware and client code are available in a separate branch of this repository, each with its own README that explains how the client was built, integrated, and tested:
+Dedicated firmware and client code are available in a separate repository, each with its own README that explains how the client was built, integrated, and tested:
 
 - [ESP32-C3 Firmware (README)](https://github.com/wasmbed/wasmbed/blob/valeriot30%2Bfratrung/firmware-esp32c3/crates/wasmbed-firmware-esp32c3/README.md)  
-- [ESP32-C3 TLS Client (README)](https://github.com/wasmbed/wasmbed/blob/valeriot30%2Bfratrung/firmware-esp32c3/crates/wasmbed-protocol-client/README.md)  
+- [bare-metal #[no_std] TLS Client (README)](https://github.com/wasmbed/wasmbed/blob/valeriot30%2Bfratrung/firmware-esp32c3/crates/wasmbed-protocol-client/README.md)  
 
 These resources complement the library by providing a concrete usage scenario, including compilation, flashing, and runtime testing of the TLS client with **Ed25519 support**.
 
